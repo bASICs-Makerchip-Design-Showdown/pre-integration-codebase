@@ -1,0 +1,216 @@
+\m5_TLV_version 1d: tl-x.org
+\m5
+   / A competition template for:
+   /
+   / /----------------------------------------------------------------------------\
+   / | The First Annual Makerchip ASIC Design Showdown, Summer 2025, Space Battle |
+   / \----------------------------------------------------------------------------/
+   /
+   / Each player or team modifies this template to provide their own custom spacecraft
+   / control circuitry. This template is for teams using TL-Verilog. A Verilog-based
+   / template is provided separately. Monitor the Showdown Slack channel for updates.
+   / Use the latest template for submission.
+   /
+   / Just 3 steps:
+   /   - Replace all YOUR_GITHUB_ID and YOUR_TEAM_NAME.
+   /   - Code your logic in the module below.
+   /   - Submit by Sun. July 26, 11 PM IST/1:30 PM EDT.
+   /
+   / Showdown details: https://www.redwoodeda.com/showdown-info and in the reposotory README.
+   /
+   /
+   / Your circuit should drive the following signals for each of your ships, in /ship[2:0]:
+   / /ships[2:0]
+   /    $xx_acc[3:0], $yy_acc[3:0]: Attempted acceleration for each of your ships (if sufficient energy);
+   /                                capped by max_acceleration (see showdown_lib.tlv). (use "\$signed($yy_acc) for signed math)
+   /    $attempt_fire: Attempt to fire (if sufficient energy remains).
+   /    $fire_dir: Direction to fire (if firing). (For the first player: 0 = right, 1 = down, 2 = left, 3 = up).
+   /    $attempt_cloak: Attempted actions for each of your ships (if sufficient energy remains).
+   /    $attempt_shield: Attempt to use shields (if sufficient energy remains).
+   / Based on the following inputs, previous state from the enemy in /prev_enemy_ship[2:0]:
+   / /ship[2:0]
+   /    *clk:           Clock; used implicitly by TL-Verilog constructs, but you can use this in embedded Verilog.
+   /    $reset:         Reset.
+   /    $xx_p[7:0], $yy_p[7:0]: Position of your ships as affected by previous cycle's acceleration. (signed value, unsigned type)
+   /    $energy[7:0]:   The energy supply of each ship, as updated by inputs last cycle.
+   /    $destroyed:     Asserted if and when the ships are destroyed.
+   / /enemy_ship[2:0]: Reflecting enemy input in the previous cycle.
+   /    $xx_p[7:0], $yy_p[7:0]: Positions of enemy ships. (signed value, unsigned type)
+   /    $cloaked: Whether the enemy ships are cloaked; if asserted enemy xx_p and xy_p did not update.
+   /    $destroyed: Whether the enemy ship has been destroyed.
+
+   / See also the game parameters in the header of `showdown_lib.tlv`.
+
+   use(m5-1.0)
+   
+   var(viz_mode, devel)  /// Enables VIZ for development.
+                         /// Use "devel" or "demo". ("demo" will be used in competition.)
+
+
+// Modify this TL-Verilog macro to implement your control circuitry.
+// Replace YOUR_GITHUB_ID with your GitHub ID, excluding non-word characters (alphabetic, numeric,
+// and "_" only)
+\TLV team_YOUR_GITHUB_ID(/_top)
+   /ship[*]
+      
+      //-----------------------\
+      //  Your Code Goes Here  |
+      //-----------------------/
+      
+      /enemy_ship[2:0]
+         $prev_xx_p[7:0] = $reset ? 8'b0 : 
+                          ($cloaked || $destroyed) ? >>1$prev_xx_p :  // Don't update prev when cloaked or destroyed
+                          >>1$xx_p;
+         $prev_yy_p[7:0] = $reset ? 8'b0 : 
+                          ($cloaked || $destroyed) ? >>1$prev_yy_p :  // Don't update prev when cloaked or destroyed
+                          >>1$yy_p;
+
+         $xx_delta[8:0] = $reset ? 9'b0 : 
+                         $cloaked ? 9'b0 :    // No delta calculation when cloaked (position doesn't update)
+                         \$signed({$xx_p[7], $xx_p}) - \$signed({$prev_xx_p[7], $prev_xx_p});
+         $yy_delta[8:0] = $reset ? 9'b0 : 
+                         $cloaked ? 9'b0 :    // No delta calculation when cloaked (position doesn't update)
+                         \$signed({$yy_p[7], $yy_p}) - \$signed({$prev_yy_p[7], $prev_yy_p});
+         
+         $significant_movement = !$reset && !$destroyed && !$cloaked &&
+                               ((\$signed($xx_delta) >= 1) || (\$signed($xx_delta) <= -1) ||
+                                (\$signed($yy_delta) >= 1) || (\$signed($yy_delta) <= -1)) &&
+                               ((\$signed($xx_delta) <= 4) && (\$signed($xx_delta) >= -4) &&
+                                (\$signed($yy_delta) <= 4) && (\$signed($yy_delta) >= -4));
+         
+         $respawning = !$reset && !$destroyed && >>1$destroyed;
+         
+         // Bit [5]: Unavailable due to destroyed (1 = destroyed, 0 = not destroyed)
+         // Bit [4]: Unavailable due to cloaked (1 = cloaked, 0 = not cloaked)
+         // Bit [3:2]: Y movement - [3] = has Y change, [2] = direction (0=negative, 1=positive)
+         // Bit [1:0]: X movement - [1] = has X change, [0] = direction (0=negative, 1=positive)
+         
+         $has_x_movement = $significant_movement && (\$signed($xx_delta) != 0);
+         $x_direction = $has_x_movement ? (\$signed($xx_delta) > 0) : 1'b0;  // Default 0 when no movement
+         
+         $has_y_movement = $significant_movement && (\$signed($yy_delta) != 0);
+         $y_direction = $has_y_movement ? (\$signed($yy_delta) > 0) : 1'b0;  // Default 0 when no movement
+         
+         $enemy_movement_state[5:0] = {$destroyed, $cloaked, $has_y_movement, $y_direction, $has_x_movement, $x_direction};
+      
+      $might_be_inline = 
+         (($xx_p == /enemy_ship[0]$xx_p) || ($yy_p == /enemy_ship[0]$yy_p)) ||
+         (($xx_p == /enemy_ship[1]$xx_p) || ($yy_p == /enemy_ship[1]$yy_p)) ||
+         (($xx_p == /enemy_ship[2]$xx_p) || ($yy_p == /enemy_ship[2]$yy_p));
+      
+      \always_comb
+         if (!$reset) begin
+            \$display("=== CYCLE \%0d - SHIP[\%0d] DEBUG ===", *cyc_cnt, ship);
+            \$display("  Ship Position: xx_p=\%0d, yy_p=\%0d, energy=\%0d, destroyed=\%b", 
+                     $xx_p, $yy_p, $energy, $destroyed);
+            \$display("  Ship Analysis: high_coords=\%b energy_level=\%s", 
+                     ($xx_p > 100 || $yy_p > 100),
+                     ($energy > 50) ? "HIGH" : ($energy > 20) ? "MED" : "LOW");
+            \$display("  Might be inline: \%b", $might_be_inline);
+            \$display("  Distance to enemies: E0=\%0d E1=\%0d E2=\%0d", 
+                     (\$signed($xx_p) - \$signed(/enemy_ship[0]$xx_p)) + (\$signed($yy_p) - \$signed(/enemy_ship[0]$yy_p)),
+                     (\$signed($xx_p) - \$signed(/enemy_ship[1]$xx_p)) + (\$signed($yy_p) - \$signed(/enemy_ship[1]$yy_p)),
+                     (\$signed($xx_p) - \$signed(/enemy_ship[2]$xx_p)) + (\$signed($yy_p) - \$signed(/enemy_ship[2]$yy_p)));
+            
+            \$display("  Enemy Ship[0]: pos=(\%0d,\%0d) prev=(\%0d,\%0d) state=\%6b cloaked=\%b destroyed=\%b", 
+                     /enemy_ship[0]$xx_p, /enemy_ship[0]$yy_p, 
+                     /enemy_ship[0]$prev_xx_p, /enemy_ship[0]$prev_yy_p,
+                     /enemy_ship[0]$enemy_movement_state, 
+                     /enemy_ship[0]$cloaked, /enemy_ship[0]$destroyed);
+            \$display("    Delta: xx_delta=\%0d, yy_delta=\%0d (signed: xx=\%0d, yy=\%0d) sig_move=\%b respawn=\%b", 
+                     /enemy_ship[0]$xx_delta, /enemy_ship[0]$yy_delta,
+                     \$signed(/enemy_ship[0]$xx_delta), \$signed(/enemy_ship[0]$yy_delta),
+                     /enemy_ship[0]$significant_movement, /enemy_ship[0]$respawning);
+            \$display("    Analysis: pos_change=(\%0d,\%0d) at_origin=\%b low_coords=\%b", 
+                     \$signed(/enemy_ship[0]$xx_p) - \$signed(/enemy_ship[0]$prev_xx_p),
+                     \$signed(/enemy_ship[0]$yy_p) - \$signed(/enemy_ship[0]$prev_yy_p),
+                     (/enemy_ship[0]$xx_p == 0 && /enemy_ship[0]$yy_p == 0),
+                     (/enemy_ship[0]$xx_p < 10 && /enemy_ship[0]$yy_p < 10));
+                     
+            \$display("  Enemy Ship[1]: pos=(\%0d,\%0d) prev=(\%0d,\%0d) state=\%6b cloaked=\%b destroyed=\%b", 
+                     /enemy_ship[1]$xx_p, /enemy_ship[1]$yy_p, 
+                     /enemy_ship[1]$prev_xx_p, /enemy_ship[1]$prev_yy_p,
+                     /enemy_ship[1]$enemy_movement_state, 
+                     /enemy_ship[1]$cloaked, /enemy_ship[1]$destroyed);
+            \$display("    Delta: xx_delta=\%0d, yy_delta=\%0d (signed: xx=\%0d, yy=\%0d) sig_move=\%b respawn=\%b", 
+                     /enemy_ship[1]$xx_delta, /enemy_ship[1]$yy_delta,
+                     \$signed(/enemy_ship[1]$xx_delta), \$signed(/enemy_ship[1]$yy_delta),
+                     /enemy_ship[1]$significant_movement, /enemy_ship[1]$respawning);
+                     
+            \$display("  Enemy Ship[2]: pos=(\%0d,\%0d) prev=(\%0d,\%0d) state=\%6b cloaked=\%b destroyed=\%b", 
+                     /enemy_ship[2]$xx_p, /enemy_ship[2]$yy_p, 
+                     /enemy_ship[2]$prev_xx_p, /enemy_ship[2]$prev_yy_p,
+                     /enemy_ship[2]$enemy_movement_state, 
+                     /enemy_ship[2]$cloaked, /enemy_ship[2]$destroyed);
+            \$display("    Delta: xx_delta=\%0d, yy_delta=\%0d (signed: xx=\%0d, yy=\%0d) sig_move=\%b respawn=\%b", 
+                     /enemy_ship[2]$xx_delta, /enemy_ship[2]$yy_delta,
+                     \$signed(/enemy_ship[2]$xx_delta), \$signed(/enemy_ship[2]$yy_delta),
+                     /enemy_ship[2]$significant_movement, /enemy_ship[2]$respawning);
+                     
+            \$display("  Movement State Encoding (6-bit):");
+            \$display("    [5] Destroyed: 1=Destroyed, 0=Not destroyed");
+            \$display("    [4] Cloaked: 1=Cloaked, 0=Not cloaked");
+            \$display("    [3:2] Y Movement: [3]=Has change, [2]=Direction (0=negative, 1=positive)");
+            \$display("    [1:0] X Movement: [1]=Has change, [0]=Direction (0=negative, 1=positive)");
+            \$display("");
+         end
+      
+      // E.g.:
+      //$xx_acc[3:0] = 4'b0;
+      //$yy_acc[3:0] = 4'b0;
+      //$attempt_fire = 1'b0;
+      //$fire_dir = 1'b0;
+      //$attempt_cloak = 1'b0;
+      //$attempt_shield = 1'b0;
+      
+      
+
+
+// [Optional]
+// Visualization of your logic for each ship.
+\TLV team_YOUR_GITHUB_ID_viz(/_top, _team_num)
+   m5+io_viz(/_top, _team_num)   /// Visualization of your IOs.
+   \viz_js
+      m5_DefaultTeamVizBoxAndWhere()
+      // Add your own visualization of your own logic here, if you like, within the bounds {left: 0..100, top: 0..100}.
+      render() {
+         // ... draw using fabric.js and signal values. (See VIZ docs under "LEARN" menu.)
+         return [
+            // For example...
+            new fabric.Text('$destroyed'.asBool() ? "I am dead! ☹️" : "I am alive! 😊", {
+               left: 10, top: 50, originY: "center", fill: "black", fontSize: 10
+            })
+         ];
+      }
+
+
+// Compete!
+// This defines the competition to simulate (for development).
+// When this file is included as a library (for competition), this code is ignored.
+\SV
+   // Include the showdown framework.
+   m4_include_lib(https://raw.githubusercontent.com/rweda/showdown-2025-space-battle/a211a27da91c5dda590feac280f067096c96e721/showdown_lib.tlv)
+   
+   m5_makerchip_module
+\TLV
+   // Enlist teams for battle.
+   
+   // Your team as the first. Provide:
+   //   - your GitHub ID, (as in your \TLV team_* macro, above)
+   //   - your team name--anything you like (that isn't crude or disrespectful)
+   m5_team(YOUR_GITHUB_ID, YOUR_TEAM_NAME)
+   
+   // Choose your opponent.
+   // Note that inactive teams must be commented with "///", not "//", to prevent M5 macro evaluation.
+   //m5_team(random, Random)
+   ///m5_team(sitting_duck, Sitting Duck)
+   ///m5_team(demo1, Test 1)
+   
+   
+   // Instantiate the Showdown environment.
+   m5+showdown(/top, /secret)
+   
+   *passed = /secret$passed || *cyc_cnt > 100;   // Defines max cycles, up to ~600.
+   *failed = /secret$failed;
+\SV
+   endmodule

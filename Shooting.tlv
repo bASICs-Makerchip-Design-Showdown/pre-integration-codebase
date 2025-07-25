@@ -51,53 +51,24 @@
 // Replace YOUR_GITHUB_ID with your GitHub ID, excluding non-word characters (alphabetic, numeric,
 // and "_" only)
 \TLV team_YOUR_GITHUB_ID(/_top)
-   
-   
-      
-      
    /ship[*]
       
       //Decide to shoot if offset & direction favorable 
       // Figure out timing for shooting ($should_shoot)
       // Shoot if energy and if ship is in radius and if ship moving towards us 
       // Reserve 4 energy/clk for movement
+      
+      // INPUTS / REMOVE ME
+      $enemy_radius = 0;
+      $dir_good = 1;
+      $ready = 1;
+      
       $fire_dir[1:0] = 0; // right
       $should_shoot = $ready && $enemy_radius < 32 && $dir_good;
       $attempt_fire = $should_shoot && $energy > 25 + 4;
       
       
-      // aa, bb, cc shorthand for dist to ships
-      $aa = /enemy_ship[0]$yy_p - $yy_p;
-      $bb = /enemy_ship[1]$yy_p - $yy_p;
-      $cc = /enemy_ship[2]$yy_p - $yy_p;
-      $$aa = ($aa >= 0) ? $$aa : 0 - $$aa;
-      $$bb = ($bb >= 0) ? $$bb : 0 - $$bb;
-      $$cc = ($cc >= 0) ? $$cc : 0 - $$cc;
-      always @(*) begin
-         if ($aa <= $bb && $aa <= $cc) begin
-            /ship$enemy_radius = $aa;
-         end else if (b <= $aa && $bb <= $cc) begin
-            /ship$enemy_radius = $bb;
-         end else begin
-            /ship$enemy_radius = $cc;
-         end
       
-      //-----------------------\
-      //  Your Code Goes Here  |
-      //-----------------------/
-      
-      // E.g.:
-      //$xx_acc[3:0] = 4'd0;
-      //$yy_acc[3:0] = 4'd0;
-      //$attempt_fire = 1'b0;
-      //$fire_dir[1:0] = 2'd0;
-      //$attempt_cloak = 1'b0;
-      //$attempt_shield = 1'b0;
-      
-      
-     
-
-
 // [Optional]
 // Visualization of your logic for each ship.
 \TLV team_YOUR_GITHUB_ID_viz(/_top, _team_num)
@@ -136,7 +107,7 @@
    // Note that inactive teams must be commented with "///", not "//", to prevent M5 macro evaluation.
    ///m5_team(random, Random)
    ///m5_team(sitting_duck, Sitting Duck)
-   m5_team(demo1, Test 1)
+   m5_team(demo2, Test 1)
    
    
    // Instantiate the Showdown environment.
